@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>Flappy World Final</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #70c5ce; }
+        canvas { display: block; touch-action: none; }
+        #ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; font-family: 'Arial Black', sans-serif; pointer-events: none;
+            text-shadow: 2px 2px 0px #000; z-index: 10;
+        }
+        .stats { position: absolute; top: 20px; left: 20px; text-align: left; font-family: Arial; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="stats">
+            <div>LIVES: <span id="lives">1</span></div>
+            <div>SCORE: <span id="score">0</span></div>
+        </div>
+        <div id="menu">
+            <h1 style="font-size: 50px; color: #f7d308; margin:0;">FLAPPY WORLD</h1>
+            <p>CLICK OR SPACE TO START</p>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- THE BIRD IMAGE ---
+        const birdImg = new Image();
+        // This is a direct URL to a Flappy Bird asset
+        birdImg.src = "https://raw.githubusercontent.com/sourabhv/FlappyBird/master/assets/sprites/yellowbird-midflap.png";
+
+        let state = { running: false, over: false, score: 0, lives: 1, speed: 4, pipes: [], bgX: 0 };
+        let bird = { x: 50, y: 0, w: 34, h: 24, vel: 0, gravity: 0.5, jump: -8 };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            bird.y = canvas.height / 2;
+            bird.gravity = canvas.height * 0.0005;
+            bird.jump = canvas.height * -0.012;
+        }
+        window.onresize = resize;
+        resize();
+
+        function action() {
+            if (!state.running || state.over) {
+                state.running = true; state.over = false; state.score = 0; state.lives = 1;
+                state.pipes = []; state.speed = 4; bird.y = canvas.height / 2; bird.vel = 0;
+                document.getElementById('menu').classList.add('hidden');
+            } else {
+                bird.vel = bird.jump;
+            }
+        }
+        window.addEventListener('keydown', (e) => { if(e.code === 'Space') action(); });
+        window.addEventListener('mousedown', action);
+
+        function loop() {
+            // 1. DRAW BACKGROUND
+            ctx.fillStyle = "#70c5ce";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. DRAW WORLD SCENERY (Mountains)
+            state.bgX -= state.speed * 0.2;
+            if (state.bgX <= -canvas.width) state.bgX = 0;
+            ctx.fillStyle = "#4a8a4a";
+            for (let i = 0; i < 2; i++) {
+                let x = state.bgX + (i * canvas.width);
+                ctx.beginPath();
+                ctx.moveTo(x, canvas.height);
+                ctx.lineTo(x + canvas.width / 2, canvas.height - 200);
+                ctx.lineTo(x + canvas.width, canvas.height);
+                ctx.fill();
+            }
+
+            // 3. GAME LOGIC
+            if (state.running && !state.over) {
+                bird.vel += bird.gravity;
+                bird.y += bird.vel;
+
+                if (state.pipes.length === 0 || state.pipes[state.pipes.length-1].x < canvas.width - 300) {
+                    let gap = canvas.height * 0.3;
+                    let top = Math.random() * (canvas.height - gap - 200) + 100;
+                    state.pipes.push({ x: canvas.width, t: top, b: canvas.height-top-gap, w: 60, p: false });
+                }
+
+                state.pipes.forEach((p, i) => {
+                    p.x -= state.speed;
+                    ctx.fillStyle = "#73bf2e";
+                    ctx.fillRect(p.x, 0, p.w, p.t);
+                    ctx.fillRect(p.x, canvas.height - p.b, p.w, p.b);
+
+                    // Collision
+                    if (bird.x < p.x + p.w && bird.x + bird.w > p.x && (bird.y < p.t || bird.y + bird.h > canvas.height - p.b)) {
+                        state.lives--;
+                        if (state.lives <= 0) state.over = true;
+                        else { state.pipes.splice(i, 1); bird.y = canvas.height/2; bird.vel = 0; }
+                    }
+
+                    if (!p.p && p.x < bird.x) {
+                        state.score++; p.p = true;
+                        if (state.score % 10 === 0) { state.lives++; state.speed += 0.5; }
+                    }
+                });
+                state.pipes = state.pipes.filter(p => p.x + p.w > 0);
+                if (bird.y > canvas.height || bird.y < 0) state.over = true;
+
+                document.getElementById('score').innerText = state.score;
+                document.getElementById('lives').innerText = state.lives;
+            }
+
+            // 4. DRAW THE BIRD (THE FIX)
+            ctx.save();
+            ctx.translate(bird.x + bird.w/2, bird.y + bird.h/2);
+            if (state.running) ctx.rotate(Math.min(Math.PI/4, Math.max(-Math.PI/4, bird.vel * 0.05)));
+            
+            // We draw the image, but also a yellow rectangle as a backup in case the internet is slow
+            if (birdImg.complete) {
+                ctx.drawImage(birdImg, -bird.w/2, -bird.h/2, bird.w, bird.h);
+            } else {
+                ctx.fillStyle = "yellow";
+                ctx.fillRect(-bird.w/2, -bird.h/2, bird.w, bird.h);
+            }
+            ctx.restore();
+
+            // 5. DRAW GROUND
+            ctx.fillStyle = "#ded895";
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+            if (state.over) {
+                document.getElementById('menu').classList.remove('hidden');
+                document.getElementById('menu').innerHTML = `<h1>GAME OVER</h1><p>SCORE: ${state.score}</p><p>CLICK TO RESTART</p>`;
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
